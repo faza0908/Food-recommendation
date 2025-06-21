@@ -1,2 +1,28 @@
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.model_selection import train_test_split
 import joblib
-joblib.dump(rfc, 'rfc_model.joblib')
+
+# Buat data dummy
+data = pd.DataFrame({
+    'type': np.random.choice([0, 1, 2, 3, 4], size=100),  # Sudah di-label encode
+    'amount': np.random.uniform(0, 10000, size=100),
+    'oldbalanceOrg': np.random.uniform(0, 5000, size=100),
+    'newbalanceOrig': np.random.uniform(0, 5000, size=100),
+    'oldbalanceDest': np.random.uniform(0, 10000, size=100),
+    'newbalanceDest': np.random.uniform(0, 10000, size=100),
+})
+
+# Target dummy: 0 (not fraud) atau 1 (fraud)
+target = np.random.choice([0, 1], size=100)
+
+# Train dummy model
+model = RandomForestClassifier()
+model.fit(data, target)
+
+# Simpan model ke rfc_model.joblib
+joblib.dump(model, 'rfc_model.joblib')
+
+print("Dummy model berhasil disimpan ke rfc_model.joblib")
