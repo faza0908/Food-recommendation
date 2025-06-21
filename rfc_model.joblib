@@ -1,2 +1,4 @@
 import joblib
-joblib.dump(rfc, 'rfc_model.joblib')
+
+# Misalnya model kamu bernama 'model'
+joblib.dump(model, 'rfc_model.joblib')
