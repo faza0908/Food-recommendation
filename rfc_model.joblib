@@ -1,0 +1,36 @@
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+import joblib
+
+# Recreate the balanced dataset
+df_majority = df[df['isFraud'] == 0]
+df_minority = df[df['isFraud'] == 1]
+df_majority_sampled = df_majority.sample(n=8500, random_state=42)
+df_balanced = pd.concat([df_majority_sampled, df_minority])
+df_balanced = df_balanced.sample(frac=1, random_state=42).reset_index(drop=True)
+
+# Drop columns not needed for the model
+df_balanced = df_balanced.drop(columns=['nameOrig','nameDest'], axis = 1)
+
+# feature target selection
+x = df_balanced.drop('isFraud', axis = 1)
+y = df_balanced['isFraud']
+
+# Data Preprocessing
+le = LabelEncoder()
+scaler = StandardScaler()
+
+x['type'] = le.fit_transform(x['type'])
+x[x.columns] = scaler.fit_transform(x[x.columns])
+
+# 70-30 train test split
+x_train,x_test,y_train,y_test = train_test_split(x,y,test_size=0.2,random_state=42)
+
+# Train the model
+rfc = RandomForestClassifier(random_state=1)
+rfc.fit(x_train,y_train)
+
+# Save the model
+joblib.dump(rfc, 'rfc_model.joblib')
