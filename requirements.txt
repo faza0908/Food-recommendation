@@ -3,3 +3,4 @@ tensorflow==2.12.0
 tensorflow-recommenders
 numpy
 pandas
+streamlit
