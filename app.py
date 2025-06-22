@@ -1,93 +1,69 @@
+# app.py
 import streamlit as st
 import pandas as pd
-import joblib
 import numpy as np
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.metrics.pairwise import cosine_similarity
+from scipy.sparse.linalg import svds
+from scipy.sparse import csr_matrix
 
-st.set_page_config(page_title="Online Payment Fraud Detection", layout="wide")
+# Load the data
+@st.cache_data
+def load_data():
+    rating = pd.read_csv('ratings.csv')
+    food = pd.read_csv('1662574418893344.csv')
+    rating.dropna(inplace=True)
+    rating[['User_ID' ,'Food_ID']] =rating[['User_ID' ,'Food_ID']].astype('int64')
+    food_rating = pd.merge(food ,rating ,on='Food_ID')
+    user_item_matrix = food_rating.pivot_table(index='User_ID', columns='Food_ID', values='Rating').fillna(0)
+    return food, user_item_matrix
 
-st.title("Online Payment Fraud Detection")
+food, user_item_matrix = load_data()
 
-# Load the saved model and preprocessors
-loaded_model = joblib.load('rfc_model.joblib')
+# Item-based Collaborative Filtering Recommendation Function
+@st.cache_data
+def recommend_items_cf(user_id, user_item_matrix, n_recommendations=5):
+    item_similarity = cosine_similarity(user_item_matrix.T)
+    item_similarity_df = pd.DataFrame(item_similarity, index=user_item_matrix.columns, columns=user_item_matrix.columns)
 
-# Recreate LabelEncoder and StandardScaler with the same fitting as before
-# Since the original training data is not directly available here,
-# we'll simulate fitting on the types and a sample of numerical data structure
-# (In a real application, you would save and load the fitted preprocessors)
+    user_ratings = user_item_matrix.loc[user_id]
+    user_unrated_items = user_ratings[user_ratings == 0].index.tolist()
 
-# For LabelEncoder, we know the categories are 'PAYMENT', 'TRANSFER', 'CASH_OUT', 'DEBIT', 'CASH_IN'
-le = LabelEncoder()
-le.fit(['PAYMENT', 'TRANSFER', 'CASH_OUT', 'DEBIT', 'CASH_IN'])
+    item_scores = {}
+    for item in user_unrated_items:
+        similar_items = item_similarity_df[item]
+        user_scores = user_ratings[user_ratings > 0]
+        item_scores[item] = sum(user_scores * similar_items[user_scores.index]) / (sum(similar_items[user_scores.index]) + 1e-9)
 
-# For StandardScaler, we need the mean and std dev from the training data.
-# As a workaround for this example, we'll use dummy data structure.
-# In a real scenario, save and load the fitted scaler: joblib.dump(scaler, 'scaler.joblib')
-# and joblib.load('scaler.joblib')
-# Let's assume the scaler was fitted on columns:
-# 'type', 'amount', 'oldbalanceOrg', 'newbalanceOrig', 'oldbalanceDest', 'newbalanceDest'
-# We need the mean and std_dev for each of these columns from the *training* data.
-# Since we don't have the original scaler or training data stats saved, this is a placeholder.
-# A real solution requires saving and loading the fitted scaler during model training.
-# For demonstration, we will create a dummy scaler.
-# THIS IS A SIMPLIFICATION FOR DEMONSTRATION ONLY.
-# A proper implementation requires saving and loading the fitted scaler.
+    recommended_items = sorted(item_scores.items(), key=lambda x: x[1], reverse=True)[:n_recommendations]
+    return [item for item, score in recommended_items]
 
-# Dummy data for scaler fitting structure - Replace with actual loaded scaler
-dummy_data = pd.DataFrame({
-    'type': [0],
-    'amount': [0.0],
-    'oldbalanceOrg': [0.0],
-    'newbalanceOrig': [0.0],
-    'oldbalanceDest': [0.0],
-    'newbalanceDest': [0.0]
-})
-scaler = StandardScaler()
-scaler.fit(dummy_data) # Fit with dummy data structure
+# Matrix Factorization Recommendation Function
+@st.cache_data
+def recommend_mf(userid, user_item_matrix, n=5):
+    user_item_matrix_csr = csr_matrix(user_item_matrix.values)
+    u, sigma, vt = svds(user_item_matrix_csr, k=min(user_item_matrix_csr.shape)-1)
+    sigma_diag = np.diag(sigma)
+    predicted_rating = np.dot(np.dot(u, sigma_diag), vt)
+    predicted_rating_df = pd.DataFrame(predicted_rating, index=user_item_matrix.index, columns=user_item_matrix.columns)
 
+    user_items = predicted_rating_df.iloc[userid - 1, :] # Adjust index for 0-based
+    r = user_items.nlargest(n).index
+    return sorted(r)
 
-st.header("Enter Transaction Details")
+# Streamlit App
+st.title('Food Recommendation System')
 
-# Input for 'type' (categorical)
-transaction_type = st.selectbox(
-    "Transaction Type",
-    ('PAYMENT', 'TRANSFER', 'CASH_OUT', 'DEBIT', 'CASH_IN')
-)
+user_id = st.number_input('Enter User ID:', min_value=1, max_value=100, value=1)
+n_recommendations = st.slider('Number of recommendations:', min_value=1, max_value=20, value=5)
+recommendation_method = st.selectbox('Select Recommendation Method:', ('Item-based Collaborative Filtering', 'Matrix Factorization'))
 
-# Input for numerical features
-amount = st.number_input("Amount", min_value=0.0, format="%.2f")
-oldbalanceOrg = st.number_input("Old Balance Originator", min_value=0.0, format="%.2f")
-newbalanceOrig = st.number_input("New Balance Originator", min_value=0.0, format="%.2f")
-oldbalanceDest = st.number_input("Old Balance Destination", min_value=0.0, format="%.2f")
-newbalanceDest = st.number_input("New Balance Destination", min_value=0.0, format="%.2f")
-
-# Prediction button
-if st.button("Predict Fraud"):
-    # Collect user input into a DataFrame
-    user_input = pd.DataFrame({
-        'type': [transaction_type],
-        'amount': [amount],
-        'oldbalanceOrg': [oldbalanceOrg],
-        'newbalanceOrig': [newbalanceOrig],
-        'oldbalanceDest': [oldbalanceDest],
-        'newbalanceDest': [newbalanceDest]
-    })
-
-    # Apply preprocessing
-    # Label encode the 'type' column
-    user_input['type'] = le.transform(user_input['type'])
-
-    # Scale the numerical features
-    # IMPORTANT: In a real application, load the fitted scaler used during training.
-    # The dummy scaler here will not produce correct results.
-    scaled_input = scaler.transform(user_input)
-
-
-    # Make prediction
-    prediction = loaded_model.predict(scaled_input)
-
-    # Display result
-    if prediction[0] == 1:
-        st.error("Fraudulent Transaction Detected!")
+if st.button('Get Recommendations'):
+    if recommendation_method == 'Item-based Collaborative Filtering':
+        recommended_food_ids = recommend_items_cf(user_id, user_item_matrix, n_recommendations)
+        st.subheader('Recommended Food Items (Item-based CF):')
     else:
-        st.success("Transaction is Not Fraudulent.")
+        recommended_food_ids = recommend_mf(user_id, user_item_matrix, n_recommendations)
+        st.subheader('Recommended Food Items (Matrix Factorization):')
+
+    recommended_foods = food[food['Food_ID'].isin(recommended_food_ids)]
+    st.table(recommended_foods)
