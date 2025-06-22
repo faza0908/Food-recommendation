@@ -1,10 +1,5 @@
-tensorflow==2.10
-tensorrt
-tensorflow_recommenders
-gradio
-numpy
-pandas
-typing
-
 streamlit
 tensorflow
+tensorflow-recommenders
+numpy
+pandas
