@@ -5,3 +5,6 @@ gradio
 numpy
 pandas
 typing
+
+streamlit
+tensorflow
